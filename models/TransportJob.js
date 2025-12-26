@@ -1,0 +1,164 @@
+const mongoose = require('mongoose');
+
+const transportJobSchema = new mongoose.Schema({
+  // Job Identification
+  jobNumber: {
+    type: String,
+    trim: true
+  },
+
+  // Vehicle Reference
+  vehicleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Vehicle'
+  },
+
+  // Status Tracking
+  status: {
+    type: String,
+    default: 'Needs Dispatch'
+  },
+
+  // Carrier Information
+  carrier: {
+    type: String,
+    default: 'PTG'
+  },
+  externalCarrierName: {
+    type: String,
+    trim: true
+  },
+
+  // Central Dispatch
+  centralDispatchLoadId: {
+    type: String,
+    trim: true
+  },
+  centralDispatchPosted: {
+    type: Boolean,
+    default: false
+  },
+  centralDispatchPostedAt: {
+    type: Date
+  },
+
+  // Route Reference (for PTG routes)
+  routeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Route'
+  },
+
+  // Scheduling - Pickup
+  plannedPickupDate: {
+    type: Date
+  },
+  plannedPickupTimeStart: {
+    type: Date
+  },
+  plannedPickupTimeEnd: {
+    type: Date
+  },
+  actualPickupDate: {
+    type: Date
+  },
+  actualPickupTime: {
+    type: Date
+  },
+
+  // Scheduling - Delivery
+  plannedDeliveryDate: {
+    type: Date
+  },
+  plannedDeliveryTimeStart: {
+    type: Date
+  },
+  plannedDeliveryTimeEnd: {
+    type: Date
+  },
+  actualDeliveryDate: {
+    type: Date
+  },
+  actualDeliveryTime: {
+    type: Date
+  },
+
+  // Proof of Delivery - Vehicle Condition Photos
+  pickupPhotos: [{
+    type: String,
+    trim: true
+  }],
+  deliveryPhotos: [{
+    type: String,
+    trim: true
+  }],
+  billOfLading: {
+    type: String,
+    trim: true
+  },
+
+  // Central Dispatch Manual Updates (for info tracking)
+  centralDispatchTruckInfo: {
+    type: String,
+    trim: true
+  },
+  centralDispatchAmount: {
+    type: Number
+  },
+  centralDispatchNotes: {
+    type: String,
+    trim: true
+  },
+
+  // Pricing
+  carrierPayment: {
+    type: Number
+  },
+
+  // Audit Trail
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  lastUpdatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  externalUserId: {
+    type: String,
+    trim: true
+  },
+  externalUserEmail: {
+    type: String,
+    trim: true
+  },
+}, {
+  timestamps: true
+});
+
+// Index for efficient queries
+transportJobSchema.index({ jobNumber: 1 });
+transportJobSchema.index({ vehicleId: 1 });
+transportJobSchema.index({ status: 1 });
+transportJobSchema.index({ carrier: 1 });
+transportJobSchema.index({ routeId: 1 });
+transportJobSchema.index({ centralDispatchLoadId: 1 });
+transportJobSchema.index({ createdAt: -1 });
+
+// Pre-save middleware to generate job number
+transportJobSchema.pre('save', async function(next) {
+  if (this.isNew && !this.jobNumber) {
+    // Generate job number like TJ-20241222-001
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const count = await mongoose.model('TransportJob').countDocuments({
+      createdAt: {
+        $gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+        $lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
+      }
+    });
+    this.jobNumber = `TJ-${dateStr}-${String(count + 1).padStart(3, '0')}`;
+  }
+  next();
+});
+
+module.exports = mongoose.model('TransportJob', transportJobSchema);
