@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ROUTE_STATUS, ROUTE_STOP_STATUS, ROUTE_STOP_TYPE } = require('../constants/status');
 
 const routeSchema = new mongoose.Schema({
   // Route Identification
@@ -100,7 +101,7 @@ const routeSchema = new mongoose.Schema({
     // Stop Type
     stopType: {
       type: String,
-      enum: ['pickup', 'drop', 'break', 'rest'],
+      enum: Object.values(ROUTE_STOP_TYPE),
       required: true
     },
     
@@ -202,16 +203,16 @@ const routeSchema = new mongoose.Schema({
     // Stop Status
     status: {
       type: String,
-      enum: ['Pending', 'In Progress', 'Completed', 'Skipped'],
-      default: 'Pending'
+      enum: Object.values(ROUTE_STOP_STATUS),
+      default: ROUTE_STOP_STATUS.PENDING
     }
   }],
 
   // Status
   status: {
     type: String,
-    enum: ['Planned', 'In Progress', 'Completed', 'Cancelled'],
-    default: 'Planned'
+    enum: Object.values(ROUTE_STATUS),
+    default: ROUTE_STATUS.PLANNED
   },
 
 

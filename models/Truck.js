@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { TRUCK_STATUS, TRUCK_CAPACITY } = require('../constants/status');
 
 const truckSchema = new mongoose.Schema({
   // Truck Identification
@@ -25,15 +26,15 @@ const truckSchema = new mongoose.Schema({
   // Capacity Information
   capacity: {
     type: String,
-    enum: ['Single', 'Double', 'Triple', 'Quad'],
-    default: 'Single'
+    enum: Object.values(TRUCK_CAPACITY),
+    default: TRUCK_CAPACITY.SINGLE
   },
 
   // Status
   status: {
     type: String,
-    enum: ['Available', 'In Use', 'Maintenance', 'Out of Service'],
-    default: 'Available'
+    enum: Object.values(TRUCK_STATUS),
+    default: TRUCK_STATUS.AVAILABLE
   },
 
   // Current Assignment (optional)

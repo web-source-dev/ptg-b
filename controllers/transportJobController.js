@@ -1,5 +1,6 @@
 const TransportJob = require('../models/TransportJob');
 const Vehicle = require('../models/Vehicle');
+const { updateStatusOnTransportJobCreate } = require('../utils/statusManager');
 
 /**
  * Create a new transport job
@@ -24,11 +25,18 @@ exports.createTransportJob = async (req, res) => {
       });
     }
 
+    // Update statuses: transport job to "Needs Dispatch", vehicle to "Ready for Transport"
+    await updateStatusOnTransportJobCreate(transportJob._id, jobData.vehicleId);
+
+    // Reload transport job to get updated status
+    const updatedTransportJob = await TransportJob.findById(transportJob._id)
+      .populate('vehicleId', 'vin year make model');
+
     res.status(201).json({
       success: true,
       message: 'Transport job created successfully',
       data: {
-        transportJob
+        transportJob: updatedTransportJob
       }
     });
   } catch (error) {

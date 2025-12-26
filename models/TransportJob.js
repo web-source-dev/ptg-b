@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { TRANSPORT_JOB_STATUS } = require('../constants/status');
 
 const transportJobSchema = new mongoose.Schema({
   // Job Identification
@@ -16,7 +17,8 @@ const transportJobSchema = new mongoose.Schema({
   // Status Tracking
   status: {
     type: String,
-    default: 'Needs Dispatch'
+    enum: Object.values(TRANSPORT_JOB_STATUS),
+    default: TRANSPORT_JOB_STATUS.NEEDS_DISPATCH
   },
 
   // Carrier Information

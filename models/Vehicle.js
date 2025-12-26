@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { VEHICLE_STATUS } = require('../constants/status');
 
 const vehicleSchema = new mongoose.Schema({
   // Vehicle Identity
@@ -101,7 +102,8 @@ const vehicleSchema = new mongoose.Schema({
   // Status
   status: {
     type: String,
-    default: 'Purchased – Intake Needed'
+    enum: Object.values(VEHICLE_STATUS),
+    default: VEHICLE_STATUS.PURCHASED_INTAKE_NEEDED
   },
 
   // Transport Job Reference

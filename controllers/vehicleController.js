@@ -1,5 +1,6 @@
 const Vehicle = require('../models/Vehicle');
 const TransportJob = require('../models/TransportJob');
+const { updateVehicleOnCreate } = require('../utils/statusManager');
 
 /**
  * Create a new vehicle
@@ -22,12 +23,18 @@ exports.createVehicle = async (req, res) => {
     // Create vehicle
     const vehicle = await Vehicle.create(vehicleData);
 
+    // Update vehicle status to "Intake Completed" when vehicle is created
+    await updateVehicleOnCreate(vehicle._id);
+
+    // Reload vehicle to get updated status
+    const updatedVehicle = await Vehicle.findById(vehicle._id);
+
     // Note: Transport job is NOT created automatically
     // PTG team will create transport job when they decide on carrier (PTG or Central Dispatch)
 
     res.status(201).json({
       success: true,
-      data: vehicle,
+      data: updatedVehicle,
       message: 'Vehicle created successfully'
     });
   } catch (error) {

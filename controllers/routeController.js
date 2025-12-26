@@ -1,6 +1,11 @@
 const Route = require('../models/Route');
 const TransportJob = require('../models/TransportJob');
 const Truck = require('../models/Truck');
+const {
+  updateStatusOnRouteCreate,
+  updateStatusOnRouteStatusChange,
+  updateStatusOnTransportJobRemoved
+} = require('../utils/statusManager');
 
 /**
  * Create a new route
@@ -60,6 +65,13 @@ exports.createRoute = async (req, res) => {
         });
       }
     }
+
+    // Update statuses: route to "Planned", transport jobs to "Dispatched", truck to "In Use"
+    await updateStatusOnRouteCreate(
+      route._id,
+      routeData.selectedTransportJobs,
+      routeData.truckId
+    );
 
     // Populate before sending response
     const populatedRoute = await Route.findById(route._id)
@@ -223,8 +235,9 @@ exports.updateRoute = async (req, res) => {
       });
     }
 
-    // Handle truck status update if route status changes
+    // Handle status updates if route status changes
     if (updateData.status && updateData.status !== route.status) {
+      // Update truck status
       const truck = await Truck.findById(route.truckId);
       if (truck) {
         if (updateData.status === 'Completed' || updateData.status === 'Cancelled') {
@@ -238,6 +251,9 @@ exports.updateRoute = async (req, res) => {
         }
         await truck.save();
       }
+
+      // Update all related statuses (transport jobs, vehicles)
+      await updateStatusOnRouteStatusChange(route._id, updateData.status, route.status);
     }
 
     // Handle selectedTransportJobs updates
@@ -377,10 +393,8 @@ exports.removeTransportJobFromRoute = async (req, res) => {
 
     await route.save();
 
-    // Remove route reference from transport job
-    await TransportJob.findByIdAndUpdate(transportJobId, {
-      $unset: { routeId: 1 }
-    });
+    // Remove route reference from transport job and update statuses
+    await updateStatusOnTransportJobRemoved(transportJobId);
 
     const updatedRoute = await Route.findById(routeId)
       .populate('driverId', 'firstName lastName email phoneNumber')
