@@ -64,6 +64,21 @@ const vehicleSchema = new mongoose.Schema({
   availableToShipDate: {
     type: Date
   },
+  // Pickup Date and Time Range
+  pickupDateStart: {
+    type: Date
+  },
+  pickupDateEnd: {
+    type: Date
+  },
+  pickupTimeStart: {
+    type: String,
+    trim: true
+  },
+  pickupTimeEnd: {
+    type: String,
+    trim: true
+  },
   twicRequired: {
     type: Boolean,
     default: false
@@ -98,6 +113,62 @@ const vehicleSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Drop Date and Time Range
+  dropDateStart: {
+    type: Date
+  },
+  dropDateEnd: {
+    type: Date
+  },
+  dropTimeStart: {
+    type: String,
+    trim: true
+  },
+  dropTimeEnd: {
+    type: String,
+    trim: true
+  },
+
+  // Documents and Images (any type of file)
+  documents: [{
+    url: {
+      type: String,
+      trim: true,
+      required: true
+    },
+    publicId: {
+      type: String,
+      trim: true
+    },
+    fileName: {
+      type: String,
+      trim: true
+    },
+    fileType: {
+      type: String,
+      trim: true
+    },
+    fileSize: {
+      type: Number
+    },
+    documentType: {
+      type: String,
+      enum: ['image', 'document', 'other'],
+      default: 'document'
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    description: {
+      type: String,
+      trim: true
+    }
+  }],
 
   // Status
   status: {

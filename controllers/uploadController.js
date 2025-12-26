@@ -2,25 +2,26 @@ const { uploadFromBase64, deleteImage } = require('../config/cloudinary');
 const { protect } = require('../middleware/auth');
 
 /**
- * Upload single image from base64
+ * Upload single image or document from base64
  * POST /api/upload/image
  */
 exports.uploadImage = async (req, res) => {
   try {
-    const { base64, folder, photoType } = req.body;
+    const { base64, folder, photoType, documentType, fileName, description } = req.body;
 
     if (!base64) {
       return res.status(400).json({
         success: false,
-        message: 'Base64 image data is required'
+        message: 'Base64 file data is required'
       });
     }
 
-    // Validate base64 string
-    if (!base64.startsWith('data:image/') && !base64.match(/^[A-Za-z0-9+/=]+$/)) {
+    // Validate base64 string - allow images, PDFs, and other documents
+    const isValidFormat = base64.startsWith('data:') || base64.match(/^[A-Za-z0-9+/=]+$/);
+    if (!isValidFormat) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid base64 image format'
+        message: 'Invalid base64 file format'
       });
     }
 
@@ -30,7 +31,18 @@ exports.uploadImage = async (req, res) => {
       uploadFolder = 'vos-ptg/vehicles';
     } else if (photoType === 'stop') {
       uploadFolder = 'vos-ptg/stops';
+    } else if (documentType === 'vehicle-document') {
+      uploadFolder = 'vos-ptg/vehicles/documents';
     }
+
+    // Detect file type from base64
+    const mimeType = base64.includes(',') 
+      ? base64.split(',')[0].split(':')[1].split(';')[0]
+      : 'image/jpeg';
+    
+    const isImage = mimeType.startsWith('image/');
+    const isPdf = mimeType === 'application/pdf';
+    const detectedDocumentType = isImage ? 'image' : (isPdf ? 'document' : 'other');
 
     // Upload to Cloudinary
     const result = await uploadFromBase64(base64, uploadFolder, {
@@ -38,20 +50,27 @@ exports.uploadImage = async (req, res) => {
       context: {
         uploaded_by: req.user?._id?.toString() || 'unknown',
         photo_type: photoType || 'general',
+        document_type: documentType || detectedDocumentType,
+        file_name: fileName || 'uploaded-file',
+        description: description || '',
         timestamp: new Date().toISOString()
       }
     });
 
     res.status(200).json({
       success: true,
-      message: 'Image uploaded successfully',
+      message: 'File uploaded successfully',
       data: {
         url: result.url,
         public_id: result.public_id,
         width: result.width,
         height: result.height,
         format: result.format,
-        bytes: result.bytes
+        bytes: result.bytes,
+        resource_type: result.resource_type,
+        fileName: fileName,
+        fileType: mimeType,
+        documentType: detectedDocumentType
       }
     });
   } catch (error) {

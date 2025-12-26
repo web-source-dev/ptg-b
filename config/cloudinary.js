@@ -57,37 +57,50 @@ const uploadFromBase64 = async (base64String, folder = 'vos-ptg', options = {}) 
       ? base64String.split(',')[1] 
       : base64String;
 
+    // Detect file type from data URL or options
+    const mimeType = base64String.includes(',') 
+      ? base64String.split(',')[0].split(':')[1].split(';')[0]
+      : 'image/jpeg';
+    
+    const isImage = mimeType.startsWith('image/');
+    const isPdf = mimeType === 'application/pdf';
+    const resourceType = isPdf ? 'raw' : (isImage ? 'image' : 'auto');
+
     const uploadOptions = {
       folder: folder,
-      resource_type: 'image',
-      transformation: [
-        {
-          width: 1200,
-          height: 1200,
-          crop: 'limit',
-          quality: 'auto',
-          fetch_format: 'auto'
-        }
-      ],
+      resource_type: resourceType,
+      ...(isImage ? {
+        transformation: [
+          {
+            width: 1200,
+            height: 1200,
+            crop: 'limit',
+            quality: 'auto',
+            fetch_format: 'auto'
+          }
+        ]
+      } : {}),
       ...options
     };
 
-    const result = await cloudinary.uploader.upload(
-      `data:image/jpeg;base64,${base64Data}`,
-      uploadOptions
-    );
+    const dataUrl = isPdf 
+      ? `data:application/pdf;base64,${base64Data}`
+      : `data:image/jpeg;base64,${base64Data}`;
+
+    const result = await cloudinary.uploader.upload(dataUrl, uploadOptions);
 
     return {
       url: result.secure_url,
       public_id: result.public_id,
-      width: result.width,
-      height: result.height,
+      width: result.width || null,
+      height: result.height || null,
       format: result.format,
-      bytes: result.bytes
+      bytes: result.bytes,
+      resource_type: result.resource_type
     };
   } catch (error) {
     console.error('Cloudinary upload error:', error);
-    throw new Error(`Failed to upload image to Cloudinary: ${error.message}`);
+    throw new Error(`Failed to upload file to Cloudinary: ${error.message}`);
   }
 };
 

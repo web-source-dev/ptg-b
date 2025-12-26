@@ -200,6 +200,26 @@ const routeSchema = new mongoose.Schema({
       trim: true
     },
 
+    // Stop Checklist (filled by driver for each stop)
+    checklist: [{
+      item: {
+        type: String,
+        trim: true,
+        required: true
+      },
+      checked: {
+        type: Boolean,
+        default: false
+      },
+      notes: {
+        type: String,
+        trim: true
+      },
+      completedAt: {
+        type: Date
+      }
+    }],
+
     // Stop Status
     status: {
       type: String,
@@ -256,7 +276,7 @@ routeSchema.index({ 'stops.transportJobId': 1 });
 routeSchema.index({ 'stops.sequence': 1 });
 routeSchema.index({ createdAt: -1 });
 
-// Pre-save middleware to generate route number
+// Pre-save middleware to generate route number and initialize checklists
 routeSchema.pre('save', async function(next) {
   if (this.isNew && !this.routeNumber) {
     const date = new Date();
@@ -269,6 +289,17 @@ routeSchema.pre('save', async function(next) {
     });
     this.routeNumber = `RT-${dateStr}-${String(count + 1).padStart(3, '0')}`;
   }
+
+  // Initialize checklists for stops that don't have them
+  if (this.stops && Array.isArray(this.stops)) {
+    const { getDefaultChecklist } = require('../utils/checklistDefaults');
+    this.stops.forEach(stop => {
+      if (!stop.checklist || stop.checklist.length === 0) {
+        stop.checklist = getDefaultChecklist(stop.stopType);
+      }
+    });
+  }
+
   next();
 });
 

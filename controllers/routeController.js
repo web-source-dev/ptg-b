@@ -6,6 +6,7 @@ const {
   updateStatusOnRouteStatusChange,
   updateStatusOnTransportJobRemoved
 } = require('../utils/statusManager');
+const { initializeRouteChecklists } = require('../utils/checklistDefaults');
 
 /**
  * Create a new route
@@ -37,6 +38,17 @@ exports.createRoute = async (req, res) => {
         truck.currentDriver = routeData.driverId;
         await truck.save();
       }
+    }
+
+    // Initialize checklists for stops if not provided
+    if (routeData.stops && Array.isArray(routeData.stops)) {
+      routeData.stops = routeData.stops.map(stop => {
+        if (!stop.checklist || stop.checklist.length === 0) {
+          const { getDefaultChecklist } = require('../utils/checklistDefaults');
+          stop.checklist = getDefaultChecklist(stop.stopType);
+        }
+        return stop;
+      });
     }
 
     // Create route
@@ -291,11 +303,16 @@ exports.updateRoute = async (req, res) => {
 
     // Handle stops updates - ensure sequence is set and update transport job references
     if (updateData.stops !== undefined && Array.isArray(updateData.stops)) {
-      // Ensure sequence is set for all stops
+      // Ensure sequence is set for all stops and initialize checklists
+      const { getDefaultChecklist } = require('../utils/checklistDefaults');
       updateData.stops.forEach((stop, index) => {
         if (stop.sequence === undefined) {
           stop.sequence = index + 1;
-            }
+        }
+        // Initialize checklist if not provided
+        if (!stop.checklist || stop.checklist.length === 0) {
+          stop.checklist = getDefaultChecklist(stop.stopType);
+        }
       });
 
       // Update transport job references from stops

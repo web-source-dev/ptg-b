@@ -137,7 +137,7 @@ exports.updateMyRoute = async (req, res) => {
       'status',
       'actualStartDate',
       'actualEndDate',
-      'stops', // For updating stop status, photos, actual dates
+      'stops', // For updating stop status, photos, actual dates, checklist
       'reports'
     ];
 
@@ -364,7 +364,8 @@ exports.updateMyRouteStop = async (req, res) => {
       'actualDate',
       'actualTime',
       'photos',
-      'notes'
+      'notes',
+      'checklist'
     ];
 
     allowedFields.forEach(field => {
