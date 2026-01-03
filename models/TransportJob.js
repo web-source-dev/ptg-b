@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { TRANSPORT_JOB_STATUS } = require('../constants/status');
+const { getDefaultPickupChecklist, getDefaultDropChecklist } = require('../utils/checklistDefaults');
 
 const transportJobSchema = new mongoose.Schema({
   // Job Identification
@@ -18,7 +19,7 @@ const transportJobSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: Object.values(TRANSPORT_JOB_STATUS),
-    default: TRANSPORT_JOB_STATUS.NEEDS_DISPATCH
+    default: TRANSPORT_JOB_STATUS.PENDING
   },
 
   // Carrier Information
@@ -44,56 +45,118 @@ const transportJobSchema = new mongoose.Schema({
     type: Date
   },
 
-  // Route Reference (for PTG routes)
-  routeId: {
+  // Driver and Truck Assignment (for PTG jobs)
+  driverId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Route'
+    ref: 'User'
+  },
+  truckId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Truck'
   },
 
-  // Scheduling - Pickup
+  // Scheduling - Planned dates set by dispatcher when creating job
+  // All location info comes from Vehicle model (pickupCity, pickupState, dropCity, dropState, etc.)
+  // All customer preference dates come from Vehicle model (pickupDateStart, dropDateEnd, etc.)
   plannedPickupDate: {
     type: Date
   },
-  plannedPickupTimeStart: {
-    type: Date
-  },
-  plannedPickupTimeEnd: {
-    type: Date
-  },
-  actualPickupDate: {
-    type: Date
-  },
-  actualPickupTime: {
-    type: Date
-  },
-
-  // Scheduling - Delivery
   plannedDeliveryDate: {
-    type: Date
-  },
-  plannedDeliveryTimeStart: {
-    type: Date
-  },
-  plannedDeliveryTimeEnd: {
-    type: Date
-  },
-  actualDeliveryDate: {
-    type: Date
-  },
-  actualDeliveryTime: {
     type: Date
   },
 
   // Proof of Delivery - Vehicle Condition Photos
   pickupPhotos: [{
-    type: String,
-    trim: true
+    url: {
+      type: String,
+      trim: true,
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    location: {
+      latitude: Number,
+      longitude: Number
+    },
+    notes: {
+      type: String,
+      trim: true
+    }
   }],
   deliveryPhotos: [{
-    type: String,
-    trim: true
+    url: {
+      type: String,
+      trim: true,
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    location: {
+      latitude: Number,
+      longitude: Number
+    },
+    notes: {
+      type: String,
+      trim: true
+    }
   }],
   billOfLading: {
+    type: String,
+    trim: true
+  },
+
+  // Pickup Checklist
+  pickupChecklist: [{
+    item: {
+      type: String,
+      trim: true,
+      required: true
+    },
+    checked: {
+      type: Boolean,
+      default: false
+    },
+    notes: {
+      type: String,
+      trim: true
+    },
+    completedAt: {
+      type: Date
+    }
+  }],
+
+  // Drop Checklist
+  dropChecklist: [{
+    item: {
+      type: String,
+      trim: true,
+      required: true
+    },
+    checked: {
+      type: Boolean,
+      default: false
+    },
+    notes: {
+      type: String,
+      trim: true
+    },
+    completedAt: {
+      type: Date
+    }
+  }],
+
+  // Pickup Notes
+  pickupNotes: {
+    type: String,
+    trim: true
+  },
+
+  // Delivery Notes
+  deliveryNotes: {
     type: String,
     trim: true
   },
@@ -142,11 +205,12 @@ transportJobSchema.index({ jobNumber: 1 });
 transportJobSchema.index({ vehicleId: 1 });
 transportJobSchema.index({ status: 1 });
 transportJobSchema.index({ carrier: 1 });
-transportJobSchema.index({ routeId: 1 });
+transportJobSchema.index({ driverId: 1 });
+transportJobSchema.index({ truckId: 1 });
 transportJobSchema.index({ centralDispatchLoadId: 1 });
 transportJobSchema.index({ createdAt: -1 });
 
-// Pre-save middleware to generate job number
+// Pre-save middleware to generate job number and initialize checklists
 transportJobSchema.pre('save', async function(next) {
   if (this.isNew && !this.jobNumber) {
     // Generate job number like TJ-20241222-001
@@ -160,6 +224,15 @@ transportJobSchema.pre('save', async function(next) {
     });
     this.jobNumber = `TJ-${dateStr}-${String(count + 1).padStart(3, '0')}`;
   }
+
+  // Initialize checklists if not provided
+  if (!this.pickupChecklist || this.pickupChecklist.length === 0) {
+    this.pickupChecklist = getDefaultPickupChecklist();
+  }
+  if (!this.dropChecklist || this.dropChecklist.length === 0) {
+    this.dropChecklist = getDefaultDropChecklist();
+  }
+
   next();
 });
 

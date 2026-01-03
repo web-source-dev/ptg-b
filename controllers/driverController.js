@@ -1,52 +1,36 @@
-const Route = require('../models/Route');
 const TransportJob = require('../models/TransportJob');
-const {
-  updateStatusOnRouteStatusChange,
-  updateStatusOnStopUpdate
-} = require('../utils/statusManager');
+const Vehicle = require('../models/Vehicle');
+const { updateStatusOnTransportJobDrop } = require('../utils/statusManager');
 
 /**
- * Get all routes for the authenticated driver
+ * Get all transport jobs for the authenticated driver
  */
-exports.getMyRoutes = async (req, res) => {
+exports.getMyTransportJobs = async (req, res) => {
   try {
     const { page = 1, limit = 50, status } = req.query;
     const driverId = req.user._id;
 
-    // Build query - only routes assigned to this driver
+    // Build query - only transport jobs assigned to this driver
     let query = { driverId };
 
     if (status) {
       query.status = status;
     }
 
-    const routes = await Route.find(query)
+    const transportJobs = await TransportJob.find(query)
       .sort({ createdAt: -1 })
       .populate('driverId', 'firstName lastName email phoneNumber')
       .populate('truckId', 'truckNumber licensePlate make model year')
-      .populate({
-        path: 'selectedTransportJobs',
-        select: 'jobNumber status vehicleId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
-      .populate({
-        path: 'stops.transportJobId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
+      .populate('vehicleId', 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone')
+      .populate('createdBy', 'firstName lastName email')
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
-    const total = await Route.countDocuments(query);
+    const total = await TransportJob.countDocuments(query);
 
     res.status(200).json({
       success: true,
-      data: routes,
+      data: transportJobs,
       pagination: {
         page: parseInt(page),
         pages: Math.ceil(total / parseInt(limit)),
@@ -55,191 +39,88 @@ exports.getMyRoutes = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching driver routes:', error);
+    console.error('Error fetching driver transport jobs:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to fetch routes',
+      message: error.message || 'Failed to fetch transport jobs',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
 /**
- * Get single route by ID (only if assigned to the driver)
+ * Get single transport job by ID (only if assigned to the driver)
  */
-exports.getMyRouteById = async (req, res) => {
+exports.getMyTransportJobById = async (req, res) => {
   try {
     const driverId = req.user._id;
-    const routeId = req.params.id;
+    const jobId = req.params.id;
 
-    const route = await Route.findOne({ _id: routeId, driverId })
+    const transportJob = await TransportJob.findOne({ _id: jobId, driverId })
       .populate('driverId', 'firstName lastName email phoneNumber')
-      .populate('truckId', 'truckNumber licensePlate make model year status')
-      .populate({
-        path: 'selectedTransportJobs',
-        select: 'jobNumber status vehicleId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
-      .populate({
-        path: 'stops.transportJobId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
+      .populate('truckId', 'truckNumber licensePlate make model year')
+      .populate('vehicleId')
       .populate('createdBy', 'firstName lastName email')
       .populate('lastUpdatedBy', 'firstName lastName email');
 
-    if (!route) {
+    if (!transportJob) {
       return res.status(404).json({
         success: false,
-        message: 'Route not found or not assigned to you'
+        message: 'Transport job not found or not assigned to you'
       });
     }
 
     res.status(200).json({
       success: true,
       data: {
-        route
+        transportJob
       }
     });
   } catch (error) {
-    console.error('Error fetching driver route:', error);
+    console.error('Error fetching driver transport job:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to fetch route',
+      message: error.message || 'Failed to fetch transport job',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
 /**
- * Update route (driver can only update certain fields like status, actual dates, stop status, photos)
+ * Update transport job pickup (driver can update pickup photos, checklist, notes, actual dates)
  */
-exports.updateMyRoute = async (req, res) => {
+exports.updateMyTransportJobPickup = async (req, res) => {
   try {
     const driverId = req.user._id;
-    const routeId = req.params.id;
+    const jobId = req.params.id;
 
-    const route = await Route.findOne({ _id: routeId, driverId });
-    if (!route) {
+    const transportJob = await TransportJob.findOne({ _id: jobId, driverId });
+    if (!transportJob) {
       return res.status(404).json({
         success: false,
-        message: 'Route not found or not assigned to you'
+        message: 'Transport job not found or not assigned to you'
       });
     }
 
-    // Drivers can only update specific fields
-    const allowedFields = [
-      'status',
-      'actualStartDate',
-      'actualEndDate',
-      'stops', // For updating stop status, photos, actual dates, checklist
-      'reports'
-    ];
+    // Drivers can only update pickup-related fields
+    const updateData = {
+      lastUpdatedBy: req.user._id
+    };
 
-    const updateData = {};
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    });
-
-    // If route status is changing to "In Progress", automatically set first stop to "In Progress"
-    if (updateData.status === 'In Progress' && route.status !== 'In Progress') {
-      if (route.stops && route.stops.length > 0) {
-        // Sort stops by sequence
-        const sortedStops = [...route.stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-        // Find first pending stop and set it to "In Progress"
-        const firstPendingStop = sortedStops.find(s => !s.status || s.status === 'Pending');
-        if (firstPendingStop) {
-          // Update the stops array
-          if (!updateData.stops) {
-            updateData.stops = route.stops.map(s => {
-              if (s._id && s._id.toString() === firstPendingStop._id.toString()) {
-                const stopObj = s.toObject ? s.toObject() : s;
-                return { ...stopObj, status: 'In Progress' };
-              }
-              return s.toObject ? s.toObject() : s;
-            });
-          } else {
-            // If stops are being updated, find and update the first pending one
-            updateData.stops = updateData.stops.map(s => {
-              const stopId = s._id ? s._id.toString() : (s.id ? s.id.toString() : null);
-              const firstPendingId = firstPendingStop._id ? firstPendingStop._id.toString() : (firstPendingStop.id ? firstPendingStop.id.toString() : null);
-              if (stopId && firstPendingId && stopId === firstPendingId) {
-                return { ...s, status: 'In Progress' };
-              }
-              return s;
-            });
-          }
-        }
-      }
+    if (req.body.pickupPhotos !== undefined) {
+      updateData.pickupPhotos = req.body.pickupPhotos;
+    }
+    if (req.body.pickupChecklist !== undefined) {
+      updateData.pickupChecklist = req.body.pickupChecklist;
+    }
+    if (req.body.pickupNotes !== undefined) {
+      updateData.pickupNotes = req.body.pickupNotes;
     }
 
-    // If updating stops, ensure sequence is maintained and validate
-    if (updateData.stops !== undefined && Array.isArray(updateData.stops)) {
-      updateData.stops.forEach((stop, index) => {
-        if (stop.sequence === undefined) {
-          stop.sequence = index + 1;
-        }
-      });
+    // Pickup completion doesn't change status - job stays "In Progress" until delivery
 
-      // Check if any stop was marked as completed, and if so, set the next pending stop to "In Progress"
-      // Compare with original route stops to detect changes
-      const originalStops = route.stops || [];
-      const sortedOriginalStops = [...originalStops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-      const sortedUpdatedStops = [...updateData.stops].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-      
-      // Find stops that were just marked as completed
-      const newlyCompletedStops = sortedUpdatedStops.filter(updatedStop => {
-        const updatedStatus = updatedStop.status;
-        if (updatedStatus !== 'Completed') return false;
-        
-        // Find corresponding original stop
-        const originalStop = sortedOriginalStops.find(orig => {
-          const origId = orig._id ? orig._id.toString() : (orig.id ? orig.id.toString() : null);
-          const updatedId = updatedStop._id ? updatedStop._id.toString() : (updatedStop.id ? updatedStop.id.toString() : null);
-          return origId && updatedId && origId === updatedId;
-        });
-        
-        // Check if status changed from non-Completed to Completed
-        return originalStop && originalStop.status !== 'Completed';
-      });
-      
-      // If a stop was just completed, set the next pending stop to "In Progress"
-      if (newlyCompletedStops.length > 0) {
-        const inProgressStops = sortedUpdatedStops.filter(s => s.status === 'In Progress');
-        
-        // Only set next stop to "In Progress" if there's no stop currently in progress
-        if (inProgressStops.length === 0) {
-          const nextPendingStop = sortedUpdatedStops.find(s => {
-            const status = s.status;
-            return !status || status === 'Pending';
-          });
-          
-          if (nextPendingStop) {
-            const stopIndex = updateData.stops.findIndex(s => {
-              const stopId = s._id ? s._id.toString() : (s.id ? s.id.toString() : null);
-              const pendingId = nextPendingStop._id ? nextPendingStop._id.toString() : (nextPendingStop.id ? nextPendingStop.id.toString() : null);
-              return stopId && pendingId && stopId === pendingId;
-            });
-            
-            if (stopIndex !== -1) {
-              updateData.stops[stopIndex].status = 'In Progress';
-            }
-          }
-        }
-      }
-    }
-
-    updateData.lastUpdatedBy = req.user._id;
-
-    const updatedRoute = await Route.findByIdAndUpdate(
-      routeId,
+    const updatedJob = await TransportJob.findByIdAndUpdate(
+      jobId,
       updateData,
       {
         new: true,
@@ -248,180 +129,91 @@ exports.updateMyRoute = async (req, res) => {
     )
       .populate('driverId', 'firstName lastName email phoneNumber')
       .populate('truckId', 'truckNumber licensePlate make model year')
-      .populate({
-        path: 'selectedTransportJobs',
-        select: 'jobNumber status vehicleId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
-      .populate({
-        path: 'stops.transportJobId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      });
-
-    // Handle route status change after save
-    if (updateData.status && updateData.status !== route.status) {
-      await updateStatusOnRouteStatusChange(routeId, updateData.status, route.status);
-    }
-
-    // Handle stop updates after save
-    if (updateData.stops && Array.isArray(updateData.stops)) {
-      const originalStops = route.stops || [];
-      for (let index = 0; index < updateData.stops.length; index++) {
-        const updatedStop = updateData.stops[index];
-        const originalStop = originalStops.find(s => {
-          const origId = s._id ? s._id.toString() : (s.id ? s.id.toString() : null);
-          const updatedId = updatedStop._id ? updatedStop._id.toString() : (updatedStop.id ? updatedStop.id.toString() : null);
-          return origId && updatedId && origId === updatedId;
-        });
-
-        if (originalStop && updatedStop.status && updatedStop.status !== originalStop.status) {
-          await updateStatusOnStopUpdate(
-            routeId,
-            index,
-            updatedStop.status,
-            updatedStop.stopType,
-            updatedStop.transportJobId
-          );
-        }
-      }
-    }
-
-    // Reload route to get updated statuses
-    const finalRoute = await Route.findById(routeId)
-      .populate('driverId', 'firstName lastName email phoneNumber')
-      .populate('truckId', 'truckNumber licensePlate make model year')
-      .populate({
-        path: 'selectedTransportJobs',
-        select: 'jobNumber status vehicleId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
-      .populate({
-        path: 'stops.transportJobId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      });
+      .populate('vehicleId');
 
     res.status(200).json({
       success: true,
-      message: 'Route updated successfully',
+      message: 'Pickup updated successfully',
       data: {
-        route: finalRoute || updatedRoute
+        transportJob: updatedJob
       }
     });
   } catch (error) {
-    console.error('Error updating driver route:', error);
+    console.error('Error updating driver transport job pickup:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to update route',
+      message: error.message || 'Failed to update pickup',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
 /**
- * Update a specific stop (for adding photos, updating status, actual dates)
+ * Update transport job drop/delivery (driver can update delivery photos, checklist, notes, actual dates)
  */
-exports.updateMyRouteStop = async (req, res) => {
+exports.updateMyTransportJobDrop = async (req, res) => {
   try {
     const driverId = req.user._id;
-    const routeId = req.params.id;
-    const stopId = req.params.stopId;
+    const jobId = req.params.id;
 
-    const route = await Route.findOne({ _id: routeId, driverId });
-    if (!route) {
+    const transportJob = await TransportJob.findOne({ _id: jobId, driverId });
+    if (!transportJob) {
       return res.status(404).json({
         success: false,
-        message: 'Route not found or not assigned to you'
+        message: 'Transport job not found or not assigned to you'
       });
     }
 
-    const stopIndex = route.stops.findIndex(s => 
-      (s._id && s._id.toString() === stopId) || 
-      (s._id === stopId)
-    );
+    // Drivers can only update drop-related fields
+    const updateData = {
+      lastUpdatedBy: req.user._id
+    };
 
-    if (stopIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: 'Stop not found'
-      });
+    if (req.body.deliveryPhotos !== undefined) {
+      updateData.deliveryPhotos = req.body.deliveryPhotos;
+    }
+    if (req.body.dropChecklist !== undefined) {
+      updateData.dropChecklist = req.body.dropChecklist;
+    }
+    if (req.body.deliveryNotes !== undefined) {
+      updateData.deliveryNotes = req.body.deliveryNotes;
     }
 
-    // Drivers can only update specific stop fields
-    const allowedFields = [
-      'status',
-      'actualDate',
-      'actualTime',
-      'photos',
-      'notes',
-      'checklist'
-    ];
+    // If marking delivery as complete (has photos), update status
+    const hasDeliveryData = (updateData.deliveryPhotos && updateData.deliveryPhotos.length > 0) ||
+                           (transportJob.deliveryPhotos && transportJob.deliveryPhotos.length > 0);
+    
+    if (hasDeliveryData && transportJob.status !== 'Completed') {
+      // Update status to "Completed"
+      updateData.status = 'Completed';
+      await updateStatusOnTransportJobDrop(jobId);
+    }
 
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        route.stops[stopIndex][field] = req.body[field];
+    const updatedJob = await TransportJob.findByIdAndUpdate(
+      jobId,
+      updateData,
+      {
+        new: true,
+        runValidators: true
       }
-    });
-
-    route.lastUpdatedBy = req.user._id;
-    await route.save();
-
-    // Update statuses based on stop update (after save)
-    const stop = route.stops[stopIndex];
-    if (req.body.status && req.body.status !== stop.status) {
-      await updateStatusOnStopUpdate(
-        routeId,
-        stopIndex,
-        req.body.status,
-        stop.stopType,
-        stop.transportJobId
-      );
-    }
-
-    const updatedRoute = await Route.findById(routeId)
+    )
       .populate('driverId', 'firstName lastName email phoneNumber')
       .populate('truckId', 'truckNumber licensePlate make model year')
-      .populate({
-        path: 'selectedTransportJobs',
-        select: 'jobNumber status vehicleId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      })
-      .populate({
-        path: 'stops.transportJobId',
-        populate: {
-          path: 'vehicleId',
-          select: 'vin year make model pickupLocationName pickupCity pickupState pickupZip dropLocationName dropCity dropState dropZip pickupContactName pickupContactPhone dropContactName dropContactPhone'
-        }
-      });
+      .populate('vehicleId');
 
     res.status(200).json({
       success: true,
-      message: 'Stop updated successfully',
+      message: 'Delivery updated successfully',
       data: {
-        route: updatedRoute
+        transportJob: updatedJob
       }
     });
   } catch (error) {
-    console.error('Error updating driver route stop:', error);
+    console.error('Error updating driver transport job drop:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to update stop',
+      message: error.message || 'Failed to update delivery',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
-

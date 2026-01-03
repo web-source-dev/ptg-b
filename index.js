@@ -36,10 +36,11 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/vehicles', require('./routes/vehicle'));
 app.use('/api/trucks', require('./routes/truck'));
 app.use('/api/transport-jobs', require('./routes/transportJob'));
-app.use('/api/routes', require('./routes/route'));
 app.use('/api/driver', require('./routes/driver'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/status', require('./routes/status'));
+app.use('/api/search', require('./routes/search'));
+app.use('/api/reports', require('./routes/reports'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -57,6 +58,13 @@ app.get('/api/test', (req, res) => {
     message: 'Test endpoint working',
     timestamp: new Date().toISOString()
   });
+});
+
+app.get("/check-popup", (req, res) => {
+  // change this to true / false for testing
+  const showPopup = true;
+
+  res.json(showPopup);
 });
 
 // 404 handler - must be last

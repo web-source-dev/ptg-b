@@ -174,7 +174,7 @@ const vehicleSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: Object.values(VEHICLE_STATUS),
-    default: VEHICLE_STATUS.PURCHASED_INTAKE_NEEDED
+    default: VEHICLE_STATUS.INTAKE_COMPLETE
   },
 
   // Transport Job Reference

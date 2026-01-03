@@ -40,11 +40,23 @@ exports.uploadImage = async (req, res) => {
       ? base64.split(',')[0].split(':')[1].split(';')[0]
       : 'image/jpeg';
     
+    console.log('[Upload Controller] Detected MIME type:', mimeType);
+    console.log('[Upload Controller] File name:', fileName);
+    console.log('[Upload Controller] Document type:', documentType);
+    console.log('[Upload Controller] Photo type:', photoType);
+    
     const isImage = mimeType.startsWith('image/');
     const isPdf = mimeType === 'application/pdf';
     const detectedDocumentType = isImage ? 'image' : (isPdf ? 'document' : 'other');
 
+    console.log('[Upload Controller] File type detection:', {
+      isImage,
+      isPdf,
+      detectedDocumentType
+    });
+
     // Upload to Cloudinary
+    console.log('[Upload Controller] Calling uploadFromBase64 with folder:', uploadFolder);
     const result = await uploadFromBase64(base64, uploadFolder, {
       // Add metadata
       context: {
@@ -57,7 +69,12 @@ exports.uploadImage = async (req, res) => {
       }
     });
 
-    res.status(200).json({
+    console.log('[Upload Controller] Upload completed successfully');
+    console.log('[Upload Controller] Result format:', result.format);
+    console.log('[Upload Controller] Result resource_type:', result.resource_type);
+    console.log('[Upload Controller] Result bytes:', result.bytes);
+
+    const responseData = {
       success: true,
       message: 'File uploaded successfully',
       data: {
@@ -72,7 +89,11 @@ exports.uploadImage = async (req, res) => {
         fileType: mimeType,
         documentType: detectedDocumentType
       }
-    });
+    };
+
+    console.log('[Upload Controller] Response data:', JSON.stringify(responseData, null, 2));
+
+    res.status(200).json(responseData);
   } catch (error) {
     console.error('Upload image error:', error);
     res.status(500).json({

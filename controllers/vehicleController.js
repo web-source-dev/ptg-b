@@ -72,7 +72,13 @@ exports.getAllVehicles = async (req, res) => {
     const vehicles = await Vehicle.find(query)
       .sort({ createdAt: -1 })
       .populate('createdBy', 'firstName lastName email')
-      .populate('transportJobId')
+      .populate({
+        path: 'transportJobId',
+        populate: [
+          { path: 'driverId', select: 'firstName lastName email phoneNumber' },
+          { path: 'truckId', select: 'truckNumber licensePlate make model year' }
+        ]
+      })
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
 
@@ -108,7 +114,13 @@ exports.getVehicleById = async (req, res) => {
   try {
     const vehicle = await Vehicle.findById(req.params.id)
       .populate('createdBy', 'firstName lastName email')
-      .populate('transportJobId');
+      .populate({
+        path: 'transportJobId',
+        populate: [
+          { path: 'driverId', select: 'firstName lastName email phoneNumber' },
+          { path: 'truckId', select: 'truckNumber licensePlate make model year' }
+        ]
+      });
 
     if (!vehicle) {
       return res.status(404).json({

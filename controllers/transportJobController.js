@@ -1,6 +1,7 @@
 const TransportJob = require('../models/TransportJob');
 const Vehicle = require('../models/Vehicle');
-const { updateStatusOnTransportJobCreate } = require('../utils/statusManager');
+const Truck = require('../models/Truck');
+const { updateStatusOnTransportJobCreate, updateStatusOnTransportJobAssigned } = require('../utils/statusManager');
 
 /**
  * Create a new transport job
@@ -25,7 +26,7 @@ exports.createTransportJob = async (req, res) => {
       });
     }
 
-    // Update statuses: transport job to "Needs Dispatch", vehicle to "Ready for Transport"
+    // Update statuses: transport job stays "Pending", vehicle to "In Transport"
     await updateStatusOnTransportJobCreate(transportJob._id, jobData.vehicleId);
 
     // Reload transport job to get updated status
@@ -54,7 +55,7 @@ exports.createTransportJob = async (req, res) => {
  */
 exports.getAllTransportJobs = async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, carrier, search } = req.query;
+    const { page = 1, limit = 50, status, carrier, search, driverId, truckId } = req.query;
 
     // Build query
     let query = {};
@@ -67,6 +68,14 @@ exports.getAllTransportJobs = async (req, res) => {
       query.carrier = carrier;
     }
 
+    if (driverId) {
+      query.driverId = driverId;
+    }
+
+    if (truckId) {
+      query.truckId = truckId;
+    }
+
     if (search) {
       query.$or = [
         { jobNumber: { $regex: search, $options: 'i' } },
@@ -77,14 +86,8 @@ exports.getAllTransportJobs = async (req, res) => {
     const transportJobs = await TransportJob.find(query)
       .sort({ createdAt: -1 })
       .populate('vehicleId', 'vin year make model pickupCity pickupState dropCity dropState')
-      .populate({
-        path: 'routeId',
-        select: 'routeNumber status',
-        populate: [
-          { path: 'driverId', select: 'firstName lastName' },
-          { path: 'truckId', select: 'truckNumber' }
-        ]
-      })
+      .populate('driverId', 'firstName lastName email phoneNumber')
+      .populate('truckId', 'truckNumber licensePlate make model year')
       .populate('createdBy', 'firstName lastName email')
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
@@ -118,13 +121,8 @@ exports.getTransportJobById = async (req, res) => {
   try {
     const transportJob = await TransportJob.findById(req.params.id)
       .populate('vehicleId')
-      .populate({
-        path: 'routeId',
-        populate: [
-          { path: 'driverId', select: 'firstName lastName email phoneNumber' },
-          { path: 'truckId', select: 'truckNumber licensePlate make model year' }
-        ]
-      })
+      .populate('driverId', 'firstName lastName email phoneNumber')
+      .populate('truckId', 'truckNumber licensePlate make model year')
       .populate('createdBy', 'firstName lastName email')
       .populate('lastUpdatedBy', 'firstName lastName email');
 
@@ -161,6 +159,37 @@ exports.updateTransportJob = async (req, res) => {
       lastUpdatedBy: req.user ? req.user._id : undefined
     };
 
+    const oldJob = await TransportJob.findById(req.params.id);
+    if (!oldJob) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transport job not found'
+      });
+    }
+
+    // Handle driver/truck assignment
+    if (updateData.driverId || updateData.truckId) {
+      // If assigning to driver/truck, update truck status and currentDriver
+      if (updateData.truckId) {
+        const truck = await Truck.findById(updateData.truckId);
+        if (truck) {
+          truck.status = 'In Use';
+          if (updateData.driverId) {
+            truck.currentDriver = updateData.driverId;
+          }
+          await truck.save();
+        }
+      }
+
+      // Update status to "In Progress" when assigned
+      if (updateData.driverId && updateData.truckId) {
+        updateData.status = 'In Progress';
+      }
+
+      // Update statuses
+      await updateStatusOnTransportJobAssigned(req.params.id, updateData.driverId, updateData.truckId);
+    }
+
     const transportJob = await TransportJob.findByIdAndUpdate(
       req.params.id,
       updateData,
@@ -170,14 +199,8 @@ exports.updateTransportJob = async (req, res) => {
       }
     )
       .populate('vehicleId', 'vin year make model')
-      .populate({
-        path: 'routeId',
-        select: 'routeNumber status',
-        populate: [
-          { path: 'driverId', select: 'firstName lastName' },
-          { path: 'truckId', select: 'truckNumber' }
-        ]
-      });
+      .populate('driverId', 'firstName lastName email phoneNumber')
+      .populate('truckId', 'truckNumber licensePlate make model year');
 
     if (!transportJob) {
       return res.status(404).json({
@@ -217,12 +240,26 @@ exports.deleteTransportJob = async (req, res) => {
       });
     }
 
-    // Check if transport job is part of an active route
-    if (transportJob.routeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete transport job that is part of a route. Please remove it from the route first.'
-      });
+    // Check if transport job is assigned to driver/truck
+    if (transportJob.driverId || transportJob.truckId) {
+      // Update truck status if needed
+      if (transportJob.truckId) {
+        const truck = await Truck.findById(transportJob.truckId);
+        if (truck) {
+          // Check if truck has other assigned jobs
+          const otherJobs = await TransportJob.countDocuments({ 
+            truckId: transportJob.truckId,
+            _id: { $ne: transportJob._id },
+            status: 'In Progress'
+          });
+          
+          if (otherJobs === 0) {
+            truck.status = 'Available';
+            truck.currentDriver = undefined;
+            await truck.save();
+          }
+        }
+      }
     }
 
     // Remove transport job reference from vehicle

@@ -7,19 +7,19 @@ const { protect, isPTG_Driver } = require('../middleware/auth');
 router.use(protect);
 router.use(isPTG_Driver);
 
-// Routes for driver routes
+// Routes for driver transport jobs
 
-// GET /api/driver/routes - Get all routes for the authenticated driver
-router.get('/routes', driverController.getMyRoutes);
+// GET /api/driver/transport-jobs - Get all transport jobs for the authenticated driver
+router.get('/transport-jobs', driverController.getMyTransportJobs);
 
-// GET /api/driver/routes/:id - Get single route by ID (only if assigned to driver)
-router.get('/routes/:id', driverController.getMyRouteById);
+// GET /api/driver/transport-jobs/:id - Get single transport job by ID (only if assigned to driver)
+router.get('/transport-jobs/:id', driverController.getMyTransportJobById);
 
-// PUT /api/driver/routes/:id - Update route (limited fields for drivers)
-router.put('/routes/:id', driverController.updateMyRoute);
+// PUT /api/driver/transport-jobs/:id/pickup - Update transport job pickup
+router.put('/transport-jobs/:id/pickup', driverController.updateMyTransportJobPickup);
 
-// PUT /api/driver/routes/:id/stops/:stopId - Update a specific stop
-router.put('/routes/:id/stops/:stopId', driverController.updateMyRouteStop);
+// PUT /api/driver/transport-jobs/:id/drop - Update transport job drop/delivery
+router.put('/transport-jobs/:id/drop', driverController.updateMyTransportJobDrop);
 
 module.exports = router;
 
