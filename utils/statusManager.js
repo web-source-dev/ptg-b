@@ -76,12 +76,21 @@ exports.updateStatusOnTransportJobAssigned = async (transportJobId, driverId, tr
 
 /**
  * Update statuses when transport job pickup is completed
- * Note: Status remains "In Progress" - pickup is just documentation
  */
 exports.updateStatusOnTransportJobPickup = async (transportJobId) => {
   try {
-    // Status remains "In Progress" - no change needed
-    // Vehicle status remains "In Transport"
+    // Update transport job status to "In Progress"
+    await TransportJob.findByIdAndUpdate(transportJobId, {
+      status: TRANSPORT_JOB_STATUS.IN_PROGRESS
+    });
+
+    // Update vehicle status to "In Transport"
+    const job = await TransportJob.findById(transportJobId).populate('vehicleId');
+    if (job && job.vehicleId) {
+      await Vehicle.findByIdAndUpdate(job.vehicleId._id || job.vehicleId, {
+        status: VEHICLE_STATUS.IN_TRANSPORT
+      });
+    }
   } catch (error) {
     console.error('Error updating status on transport job pickup:', error);
   }

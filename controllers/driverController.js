@@ -1,6 +1,6 @@
 const TransportJob = require('../models/TransportJob');
 const Vehicle = require('../models/Vehicle');
-const { updateStatusOnTransportJobDrop } = require('../utils/statusManager');
+const { updateStatusOnTransportJobDrop, updateStatusOnTransportJobPickup } = require('../utils/statusManager');
 
 /**
  * Get all transport jobs for the authenticated driver
@@ -117,7 +117,15 @@ exports.updateMyTransportJobPickup = async (req, res) => {
       updateData.pickupNotes = req.body.pickupNotes;
     }
 
-    // Pickup completion doesn't change status - job stays "In Progress" until delivery
+    // Update status when pickup data is provided
+    const hasPickupData = (updateData.pickupPhotos && updateData.pickupPhotos.length > 0) ||
+                         (updateData.pickupChecklist && updateData.pickupChecklist.length > 0) ||
+                         (updateData.pickupNotes !== undefined);
+
+    if (hasPickupData && transportJob.status !== 'In Progress') {
+      // Update status to "In Progress"
+      await updateStatusOnTransportJobPickup(jobId);
+    }
 
     const updatedJob = await TransportJob.findByIdAndUpdate(
       jobId,
@@ -179,10 +187,11 @@ exports.updateMyTransportJobDrop = async (req, res) => {
       updateData.deliveryNotes = req.body.deliveryNotes;
     }
 
-    // If marking delivery as complete (has photos), update status
+    // Update status when delivery data is provided
     const hasDeliveryData = (updateData.deliveryPhotos && updateData.deliveryPhotos.length > 0) ||
-                           (transportJob.deliveryPhotos && transportJob.deliveryPhotos.length > 0);
-    
+                           (updateData.dropChecklist && updateData.dropChecklist.length > 0) ||
+                           (updateData.deliveryNotes !== undefined);
+
     if (hasDeliveryData && transportJob.status !== 'Completed') {
       // Update status to "Completed"
       updateData.status = 'Completed';
